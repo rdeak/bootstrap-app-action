@@ -1,0 +1,57 @@
+name: "Bootstrap App Action"
+description: "Provision resources needed for app with Terraform"
+author: "rdeak"
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Create backend.hcl
+      shell: bash
+      working-directory: ${{ inputs.context }}
+      run: |
+        cat <<EOF > config_generated.hcl
+        bucket         = "${{ inputs.aws_s3_bucket_name }}"
+        region         = "${{ inputs.aws_region }}"
+        dynamodb_table = "${{ inputs.bucketName }}-locks"
+        encrypt        = true
+        EOF
+
+    - name: Create backend.tf
+      shell: bash
+      working-directory: ${{ input.context }}
+      run: |
+        cat <<EOF > backend_generated.tf
+        terraform {
+          backend "s3" {
+            key = "global/${{ inputs.name }}/terraform.tfstate"
+          }
+        }
+        EOF
+
+    - name: Terraform Init
+      shell: bash
+      working-directory: ${{ inputs.context }}
+      run: terraform init -backend-config=config_generated.hcl
+
+    - name: Terraform Apply
+      shell: bash
+      working-directory: ${{ inputs.context }}
+      run: terraform apply -auto-approve
+inputs:
+  name:
+    description: Configuration name, used for backend name
+    required: true
+  aws_s3_bucket_name:
+    description: Name of S3 bucket where Terraform state is persisted
+    required: true
+  aws_region:
+    description: Target AWS Region
+    required: true
+  context:
+    description: Terraform working directory
+    default: .deploy
